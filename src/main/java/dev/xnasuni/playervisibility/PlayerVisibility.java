@@ -3,10 +3,10 @@ package dev.xnasuni.playervisibility;
 import com.mojang.brigadier.CommandDispatcher;
 import dev.xnasuni.playervisibility.commands.VisibilityCommand;
 import dev.xnasuni.playervisibility.config.ModConfig;
+import dev.xnasuni.playervisibility.types.FilterType;
 import dev.xnasuni.playervisibility.util.ArrayListUtil;
 import dev.xnasuni.playervisibility.util.ConfigUtil;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -25,49 +25,50 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
 
 public class PlayerVisibility implements ModInitializer {
     public static final String ModID = "player-visibility";
     public static final String DisplayModID = "PlayerVisibility";
 
     public static final Logger LOGGER = LoggerFactory.getLogger(DisplayModID);
-    public static MinecraftClient Minecraft;
+    public static MinecraftClient minecraftClient;
 
-    private static boolean Visible = true;
+    private static boolean filterEnabled = true;
 
-    private static String[] WhitelistedPlayers;
+    private static String[] filteredPlayers;
+    private static FilterType filterType;
 
-    private static KeyBinding ToggleVisibility;
+    private static KeyBinding toggleVisibility;
 
-    public static Path ConfigDirectory;
+    public static Path configDirectory;
+
+    public static void setFilterType(FilterType filterType) {
+        PlayerVisibility.filterType = filterType;
+    }
 
     @Override
     public void onInitialize() {
-        ConfigDirectory = FabricLoader.getInstance().getConfigDir().resolve("player-visibility");
+        configDirectory = FabricLoader.getInstance().getConfigDir().resolve("player-visibility");
         try {
-            Files.createDirectories(ConfigDirectory);
-            if (Files.exists(ConfigDirectory.resolve("whitelisted-players.txt"))) {
-                try {
-                    WhitelistedPlayers = ConfigUtil.Load();//new String[]{ };
-                } catch (IOException e) {
-                    WhitelistedPlayers = new String[]{};
-                    LOGGER.warn("File `whitelisted-players.txt` could not be loaded, defaulting to empty list.");
-                }
-            } else {
-                WhitelistedPlayers = new String[]{};
-                Files.createFile(ConfigDirectory.resolve("whitelisted-players.txt"));
-            }
+            Files.createDirectories(configDirectory);
+            filteredPlayers = ConfigUtil.getFilteredPlayers();
         } catch (IOException e) {
-            WhitelistedPlayers = new String[]{};
+            filteredPlayers = new String[]{};
             LOGGER.warn("Could not create directory, defaulting to empty list.");
+        }
+
+        try {
+            filterType = ConfigUtil.getFilterType();
+        } catch (IOException e) {
+            filterType = FilterType.WHITELIST;
+            LOGGER.warn("Could not read filter type, defaulting to whitelist.");
         }
 
         ModConfig.init();
 
-        Minecraft = MinecraftClient.getInstance();
+        minecraftClient = MinecraftClient.getInstance();
 
-        ToggleVisibility = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+        toggleVisibility = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.player-visibility.toggle",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_V,
@@ -75,16 +76,16 @@ public class PlayerVisibility implements ModInitializer {
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            while (ToggleVisibility.wasPressed()) {
-                ToggleVisibility();
+            while (toggleVisibility.wasPressed()) {
+                toggleFilter();
             }
         });
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             try {
-                ConfigUtil.Save(WhitelistedPlayers);
+                ConfigUtil.save(filteredPlayers, filterType);
             } catch (IOException e) {
-                LOGGER.error("Failed to save whitelisted players to `whitelisted-players.txt`", e);
+                LOGGER.error("Failed to save config.", e);
             }
         });
 
@@ -97,70 +98,70 @@ public class PlayerVisibility implements ModInitializer {
         VisibilityCommand.Register(Dispatcher);
     }
 
-    public static void ToggleVisibility() {
-        Visible = !Visible;
-        String VisibleString = "§coff";
-        if (Visible) {
-            VisibleString = "§aon";
-        }
-        Minecraft.player.sendMessage(Text.of(String.format("§%cPlayer Visibility§f is now §f%s§f", ModConfig.INSTANCE.MainColor.GetChar(), VisibleString)), true);
+    public static void toggleFilter() {
+        filterEnabled = !filterEnabled;
+        minecraftClient.player.sendMessage(Text.of(String.format("§%cPlayer Visibility§f filter is now §f%s§f (§f%s§f)", ModConfig.INSTANCE.MainColor.GetChar(), filterEnabled ? "§aon" : "§coff", filterType.toString())), true);
     }
 
-    public static boolean IsVisible() {
-        return Visible;
+    public static boolean isFilterEnabled() {
+        return filterEnabled;
     }
 
-    public static String[] GetWhitelistedPlayers() {
-        return WhitelistedPlayers;
+    public static String[] getFilteredPlayers() {
+        return filteredPlayers;
     }
 
-    public static void WhitelistPlayer(String Username) {
-        String CasedName = ArrayListUtil.GetCase(WhitelistedPlayers, Username);
+    public static FilterType getFilterType() {
+        return filterType;
+    }
 
-        if (Username.equalsIgnoreCase(Minecraft.player.getName().getString())) {
-            Minecraft.player.sendMessage(Text.of("§cYou can't whitelist yourself!"), true);
+    public static void addPlayerToFilter(String Username) {
+        String CasedName = ArrayListUtil.GetCase(filteredPlayers, Username);
+
+        if (Username.equalsIgnoreCase(minecraftClient.player.getName().getString())) {
+            minecraftClient.player.sendMessage(Text.of("§cYou can't filter yourself!"), true);
             return;
         }
 
-        if (ArrayListUtil.ContainsLowercase(WhitelistedPlayers, Username)) {
-            Minecraft.player.sendMessage(Text.of(String.format("§f '%s'§c is already whitelisted!", CasedName)), true);
+        if (ArrayListUtil.ContainsLowercase(filteredPlayers, Username)) {
+            minecraftClient.player.sendMessage(Text.of(String.format("§f '%s'§c is already filtered!", CasedName)), true);
             return;
         }
 
-        WhitelistedPlayers = ArrayListUtil.AddStringToArray(WhitelistedPlayers, Username);
-        ModConfig.PlayerWhitelist = PlayerVisibility.GetWhitelistedPlayers();
-        Minecraft.player.sendMessage(Text.of(String.format("§aAdded §f'%s'§a to the whitelist.", CasedName)), true);
+        filteredPlayers = ArrayListUtil.AddStringToArray(filteredPlayers, Username);
+        ModConfig.filteredPlayers = PlayerVisibility.getFilteredPlayers();
+        minecraftClient.player.sendMessage(Text.of(String.format("§aAdded §f'%s'§a to the filter.", CasedName)), true);
     }
 
-    public static void UnwhitelistPlayer(String Username) {
-        String CasedName = ArrayListUtil.GetCase(WhitelistedPlayers, Username);
+    public static void removePlayerFromFilter(String Username) {
+        String CasedName = ArrayListUtil.GetCase(filteredPlayers, Username);
 
-        if (Username.equalsIgnoreCase(Minecraft.player.getName().getString())) {
-            Minecraft.player.sendMessage(Text.of("§cYou can't unwhitelist yourself!"), true);
+        if (Username.equalsIgnoreCase(minecraftClient.player.getName().getString())) {
+            minecraftClient.player.sendMessage(Text.of("§cYou can't unfilter yourself!"), true);
             return;
         }
 
-        if (!ArrayListUtil.ContainsLowercase(WhitelistedPlayers, Username)) {
-            Minecraft.player.sendMessage(Text.of(String.format("§f'%s'§c is not whitelisted!", CasedName)), true);
+        if (!ArrayListUtil.ContainsLowercase(filteredPlayers, Username)) {
+            minecraftClient.player.sendMessage(Text.of(String.format("§f'%s'§c is not filtered!", CasedName)), true);
             return;
         }
 
-        WhitelistedPlayers = ArrayListUtil.RemoveStringToArray(WhitelistedPlayers, CasedName);
-        ModConfig.PlayerWhitelist = PlayerVisibility.GetWhitelistedPlayers();
-        Minecraft.player.sendMessage(Text.of(String.format("§aRemoved §f'%s'§a from the whitelist.", CasedName)), true);
+        filteredPlayers = ArrayListUtil.RemoveStringToArray(filteredPlayers, CasedName);
+        ModConfig.filteredPlayers = PlayerVisibility.getFilteredPlayers();
+        minecraftClient.player.sendMessage(Text.of(String.format("§aRemoved §f'%s'§a from the filter.", CasedName)), true);
     }
 
-    public static void ClearWhitelist() {
-        int SizeBeforeClear = WhitelistedPlayers.length;
+    public static void clearFilter() {
+        int SizeBeforeClear = filteredPlayers.length;
 
         if (SizeBeforeClear == 0) {
-            Minecraft.player.sendMessage(Text.of(String.format("§cThe whitelist is already empty §f(§c%s§f)", SizeBeforeClear)), true);
+            minecraftClient.player.sendMessage(Text.of(String.format("§cThe filter is already empty §f(§c%s§f)", SizeBeforeClear)), true);
             return;
         }
 
-        WhitelistedPlayers = new String[]{};
-        ModConfig.PlayerWhitelist = PlayerVisibility.GetWhitelistedPlayers();
-        Minecraft.player.sendMessage(Text.of(String.format("§aCleared the whitelist §f(§a%s§f)", SizeBeforeClear)), true);
+        filteredPlayers = new String[]{};
+        ModConfig.filteredPlayers = PlayerVisibility.getFilteredPlayers();
+        minecraftClient.player.sendMessage(Text.of(String.format("§aCleared the filter §f(§a%s§f)", SizeBeforeClear)), true);
 
     }
 

@@ -1,6 +1,7 @@
 package dev.xnasuni.playervisibility.mixin;
 
 import dev.xnasuni.playervisibility.PlayerVisibility;
+import dev.xnasuni.playervisibility.types.FilterType;
 import dev.xnasuni.playervisibility.util.ArrayListUtil;
 import net.minecraft.client.network.AbstractClientPlayerEntity;
 import net.minecraft.client.render.VertexConsumerProvider;
@@ -16,19 +17,25 @@ public class PlayerMixin {
 
     @Inject(method = "render(Lnet/minecraft/client/network/AbstractClientPlayerEntity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At("HEAD"), cancellable = true)
     private void InjectRender(AbstractClientPlayerEntity abstractClientPlayerEntity, float f, float g, MatrixStack matrixStack, VertexConsumerProvider vertexConsumerProvider, int i, CallbackInfo ci) {
-        boolean ShouldShowPlayer = PlayerVisibility.IsVisible();
 
-        if (abstractClientPlayerEntity.getName().getString().equalsIgnoreCase(PlayerVisibility.Minecraft.player.getName().getString())) {
-            ShouldShowPlayer = true;
+        if (PlayerVisibility.isFilterEnabled()) {
+            boolean shouldShowPlayer;
+            if (abstractClientPlayerEntity.getName().getString().equalsIgnoreCase(PlayerVisibility.minecraftClient.player.getName().getString())) {
+                shouldShowPlayer = true;
+            } else {
+                boolean IsFiltered = ArrayListUtil.ContainsLowercase(PlayerVisibility.getFilteredPlayers(), abstractClientPlayerEntity.getName().getString());
+                if (PlayerVisibility.getFilterType() == FilterType.WHITELIST) {
+                    shouldShowPlayer = IsFiltered;
+                } else {
+                    shouldShowPlayer = !IsFiltered;
+                }
+            }
+
+            if (!shouldShowPlayer) {
+                ci.cancel();
+            }
         }
 
-        if (ArrayListUtil.ContainsLowercase(PlayerVisibility.GetWhitelistedPlayers(), abstractClientPlayerEntity.getName().getString())) {
-            ShouldShowPlayer = true;
-        }
-
-        if (!PlayerVisibility.IsVisible() && !ShouldShowPlayer) {
-            ci.cancel();
-        }
     }
 
 }

@@ -1,6 +1,7 @@
 package dev.xnasuni.playervisibility.config;
 
 import dev.xnasuni.playervisibility.PlayerVisibility;
+import dev.xnasuni.playervisibility.types.FilterType;
 import dev.xnasuni.playervisibility.types.TextColor;
 import me.shedaniel.autoconfig.AutoConfig;
 import me.shedaniel.autoconfig.ConfigData;
@@ -14,13 +15,17 @@ public class ModConfig implements ConfigData {
     public static ModConfig INSTANCE;
 
     public static void init() {
-        PlayerWhitelist = PlayerVisibility.GetWhitelistedPlayers();
+        filteredPlayers = PlayerVisibility.getFilteredPlayers();
+        filterType = PlayerVisibility.getFilterType();
         AutoConfig.register(ModConfig.class, me.shedaniel.autoconfig.serializer.JanksonConfigSerializer::new);
         INSTANCE = AutoConfig.getConfigHolder(ModConfig.class).getConfig();
     }
 
     @ConfigEntry.Gui.PrefixText
-    public static String[] PlayerWhitelist;
+    public static String[] filteredPlayers;
+
+    @ConfigEntry.Gui.PrefixText
+    public static FilterType filterType;
 
     @ConfigEntry.Gui.Tooltip
     @ConfigEntry.Gui.EnumHandler(option = ConfigEntry.Gui.EnumHandler.EnumDisplayOption.DROPDOWN)

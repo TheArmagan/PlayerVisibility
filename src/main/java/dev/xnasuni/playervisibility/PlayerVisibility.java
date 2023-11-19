@@ -64,6 +64,13 @@ public class PlayerVisibility implements ModInitializer {
             LOGGER.warn("Could not read filter type, defaulting to whitelist.");
         }
 
+        try {
+            filterEnabled = ConfigUtil.getFilterEnabled();
+        } catch (IOException e) {
+            filterEnabled = true;
+            LOGGER.warn("Could not read filter enabled, defaulting to true.");
+        }
+
         ModConfig.init();
 
         minecraftClient = MinecraftClient.getInstance();
@@ -83,7 +90,7 @@ public class PlayerVisibility implements ModInitializer {
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             try {
-                ConfigUtil.save(filteredPlayers, filterType);
+                ConfigUtil.save(filteredPlayers, filterType, filterEnabled);
             } catch (IOException e) {
                 LOGGER.error("Failed to save config.", e);
             }

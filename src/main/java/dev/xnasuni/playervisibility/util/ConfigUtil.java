@@ -8,10 +8,12 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
+import java.util.Objects;
 
 public class ConfigUtil {
     private static final File filteredPlayersFile = new File(PlayerVisibility.configDirectory.resolve("pv-filtered-players.txt").toUri());
     private static final File filterTypeFile = new File(PlayerVisibility.configDirectory.resolve("pv-filter-type.txt").toUri());
+    private static final File filterEnabledFile = new File(PlayerVisibility.configDirectory.resolve("pv-filter-enabled.txt").toUri());
 
     public static String[] getFilteredPlayers() throws IOException {
         String[] filteredPlayers;
@@ -43,9 +45,25 @@ public class ConfigUtil {
         return filterType;
     }
 
-    public static void save(String[] whitelistedPlayers, FilterType filterType) throws IOException {
+    public static boolean getFilterEnabled() throws IOException {
+        boolean toggleState;
+        if (filterEnabledFile.canRead()) {
+            try {
+                List<String> allLines = Files.readAllLines(Paths.get(filterEnabledFile.toURI()));
+                toggleState = Objects.equals(allLines.get(0), "true");
+            } catch (IOException e) {
+                return true;
+            }
+        } else {
+            throw new IOException("Cannot read file toggle state");
+        }
+        return toggleState;
+    }
+
+    public static void save(String[] whitelistedPlayers, FilterType filterType, Boolean toggleState) throws IOException {
         String whitelistedPlayersString = String.join("\n", whitelistedPlayers);
         Files.write(filteredPlayersFile.toPath(), whitelistedPlayersString.getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         Files.write(filterTypeFile.toPath(), filterType.toString().getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        Files.write(filterEnabledFile.toPath(), toggleState.toString().getBytes(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
     }
 }
